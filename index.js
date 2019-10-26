@@ -26,6 +26,7 @@ function init() {
 		default: {
 			input: 'export.xml',
 			output: 'output',
+			filter: undefined,
 			yearmonthfolders: false,
 			yearfolders: false,
 			postfolders: true,
@@ -130,24 +131,32 @@ function collectPosts(data, authors) {
 	turndownService = initTurndownService();
 
 	return getItemsOfType(data, 'post')
-		.map(post => ({
-			// meta data isn't written to file, but is used to help with other things
-			meta: {
-				id: getPostId(post),
-				slug: getPostSlug(post),
-				coverImageId: getPostCoverImageId(post),
-			},
-			frontmatter: {
-				title: getPostTitle(post),
-				author: getAuthorName(authors, getPostAuthor(post)),
-				date: getPostDate(post),
-				categories: getCategories(post),
-				tags: getTags(post)
-			},
-			content: getPostContent(post, turndownService)
-		}));
+		.filter(post => {
+			return argv.filter
+				? getPostTitle(post).toLowerCase().indexOf(argv.filter.toLowerCase()) > -1
+				: true
+		})
+		.map(post => {
+			const title = getPostTitle(post)
+			console.log('Processing: ' + title)
+			return {
+				// meta data isn't written to file, but is used to help with other things
+				meta: {
+					id: getPostId(post),
+					slug: getPostSlug(post),
+					coverImageId: getPostCoverImageId(post),
+				},
+				frontmatter: {
+					title,
+					author: getAuthorName(authors, getPostAuthor(post)),
+					date: getPostDate(post),
+					categories: getCategories(post),
+					tags: getTags(post)
+				},
+				content: getPostContent(post, turndownService)
+			}
+		});
 }
-
 
 function initTurndownService() {
 	let turndownService = new turndown({
