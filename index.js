@@ -541,7 +541,7 @@ function init () {
     default: {
       // I/O
       input: 'export.xml',
-      output: 'output',
+      output: undefined,
       filter: undefined,
 
       // files and folders
@@ -561,6 +561,11 @@ function init () {
     console.error('Invalid `folders` option:', argv.folders)
     console.error('Choose from:', folders.join(', '))
     return
+  }
+
+  // set output to input if not already set
+  if (!argv.output) {
+    argv.output = argv.input.replace(/\.xml$/, '')
   }
 
   const content = readFile(argv.input)
