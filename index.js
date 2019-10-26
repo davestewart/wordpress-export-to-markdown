@@ -17,12 +17,37 @@ function isObject (value) {
 
 function isEmpty (value) {
   if (Array.isArray(value)) {
-    return value.length === 0
+    return value.filter(value => !!value).length === 0
   }
   if (isObject(value)) {
     return Object.keys(value).length === 0
   }
-  return !value
+  return value === null || typeof value === 'undefined' || value === ''
+}
+
+function clean (input) {
+  if (Array.isArray(input)) {
+    return input
+      .map(value => clean(value))
+      .filter(value => !isEmpty(value))
+  }
+
+  if (isObject(input)) {
+    return Object
+      .keys(input)
+      .reduce((output, key) => {
+        let value = input[key]
+        if (!isEmpty(value)) {
+          value = clean(value)
+          if (!isEmpty(value)) {
+            output[key] = value
+          }
+        }
+        return output
+      }, {})
+  }
+
+  return input
 }
 
 function readFile (path) {
@@ -66,17 +91,11 @@ function parseFileContent (content) {
   })
 }
 
-function collectAuthors (data) {
-  return data.rss.channel[0].author.map(item => ({
-    id: item.author_login[0],
-    name: item.author_display_name[0]
-  }))
-}
-
 function processData (data) {
-  let images = collectImages(data)
-  let authors = collectAuthors(data)
-  let posts = collectPosts(data, authors)
+  const baseUrl = data.rss.channel[0].base_site_url[0]
+  images = collectImages(data)
+  authors = collectAuthors(data)
+  posts = collectPosts(data, authors)
   mergeImagesIntoPosts(images, posts)
   writeFiles(posts)
 }
@@ -129,6 +148,13 @@ function addContentImages (data, images) {
   })
 }
 
+function collectAuthors (data) {
+  return data.rss.channel[0].author.map(item => ({
+    id: item.author_login[0],
+    name: item.author_display_name[0]
+  }))
+}
+
 function collectPosts (data, authors) {
   // this is passed into getPostContent() for the markdown conversion
   turndownService = initTurndownService()
@@ -160,7 +186,8 @@ function collectPosts (data, authors) {
           date: getPostDate(post),
           images: {},
           categories: getCategories(post),
-          tags: getTags(post)
+          tags: getTags(post),
+          meta: getMeta(post),
         },
         content: getPostContent(post, turndownService)
       }
@@ -226,48 +253,8 @@ function initTurndownService () {
 // post
 // ---------------------------------------------------------------------------------------------------------------------
 
-function getAuthorName (authors, id) {
-  return authors.find(item => item.id === id).name
-}
-
-function getPostAuthor (post) {
-  return post.creator[0]
-}
-
-function getCategories (post) {
-  let categories = []
-  post.category.forEach(c => {
-    if (c.$.domain === 'category') {
-      categories.push(c._.toLowerCase().trim())
-    }
-  })
-  return categories
-}
-
-function getTags (post) {
-  let tags = []
-  post.category.forEach(c => {
-    if (c.$.domain === 'post_tag') {
-      tags.push(c._.toLowerCase().trim())
-    }
-  })
-  return tags
-}
-
 function getPostId (post) {
   return post.post_id[0]
-}
-
-function getPostThumbnailImage (post) {
-  if (post.postmeta === undefined) return
-  let postmeta = post.postmeta.find(postmeta => postmeta.meta_key[0] === '_thumbnail_id')
-  return postmeta && postmeta.meta_value[0]
-}
-
-function getPostFeatureImage (post) {
-  if (post.postmeta === undefined) return
-  let postmeta = post.postmeta.find(postmeta => postmeta.meta_key[0] === 'post_medium_thumbnail_id')
-  return postmeta && postmeta.meta_value[0]
 }
 
 function getPostSlug (post) {
@@ -276,6 +263,10 @@ function getPostSlug (post) {
 
 function getPostPath (post) {
   return post.link[0].replace(/https?:\/\/[^/]+/, '').replace(/^\/|\/$/g, '')
+}
+
+function getPostDate (post) {
+  return luxon.DateTime.fromRFC2822(post.pubDate[0], { zone: 'utc' }).toISODate()
 }
 
 function getPostStatus (post) {
@@ -290,8 +281,58 @@ function getPostExcerpt (post) {
   return (post.encoded[1] || '').trim()
 }
 
-function getPostDate (post) {
-  return luxon.DateTime.fromRFC2822(post.pubDate[0], { zone: 'utc' }).toISODate()
+function getAuthorName (authors, id) {
+  return authors.find(item => item.id === id).name
+}
+
+function getPostAuthor (post) {
+  return post.creator[0]
+}
+
+function getCategories (post) {
+  return (post.category || []).reduce((output, item) => {
+    if (item.$.domain === 'category') {
+      output.push(item._.toLowerCase().trim())
+    }
+    return output
+  }, [])
+}
+
+function getTags (post) {
+  return (post.category || []).reduce((output, item) => {
+    if (item.$.domain === 'post_tag') {
+      output.push(item._.toLowerCase().trim())
+    }
+    return output
+  }, [])
+}
+
+function getMeta (post) {
+  return (post.postmeta || []).reduce((output, item) => {
+    const key = item.meta_key[0].replace(/^_/, '')
+    if (key in metaKeys) {
+      const value = item.meta_value[0]
+      if (value) {
+        const transform = metaKeys[key]
+        output[key] = typeof transform === 'function'
+          ? transform(value)
+          : value
+      }
+    }
+    return output
+  }, {})
+}
+
+function getPostThumbnailImage (post) {
+  if (post.postmeta === undefined) return
+  let postmeta = post.postmeta.find(postmeta => postmeta.meta_key[0] === '_thumbnail_id')
+  return postmeta && postmeta.meta_value[0]
+}
+
+function getPostFeatureImage (post) {
+  if (post.postmeta === undefined) return
+  let postmeta = post.postmeta.find(postmeta => postmeta.meta_key[0] === 'post_medium_thumbnail_id')
+  return postmeta && postmeta.meta_value[0]
 }
 
 function getPostContent (post, turndownService) {
@@ -380,15 +421,7 @@ function writeFiles (posts) {
 }
 
 function writeMarkdownFile (post, postDir) {
-  const frontmatter = Object
-    .keys(post.frontmatter)
-    .reduce((output, key) => {
-      const value = post.frontmatter[key]
-      if (!isEmpty(value)) {
-        output[key] = value
-      }
-      return output
-    }, {})
+  const frontmatter = clean(post.frontmatter)
   const data = '---\n' + YAML.stringify(frontmatter) + '---\n\n' + post.content + '\n'
   const postPath = path.join(postDir, getPostFilename(post))
 
@@ -477,6 +510,17 @@ function getPostFilename (post) {
 // ---------------------------------------------------------------------------------------------------------------------
 // init
 // ---------------------------------------------------------------------------------------------------------------------
+
+// meta options
+const metaKeys = {
+  // add transformer functions here
+}
+
+// object globals
+let baseUrl
+let images
+let authors
+let posts
 
 // global so various functions can access arguments
 let argv
