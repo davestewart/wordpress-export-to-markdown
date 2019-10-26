@@ -144,12 +144,15 @@ function collectPosts(data, authors) {
 				meta: {
 					id: getPostId(post),
 					slug: getPostSlug(post),
-					coverImageId: getPostCoverImageId(post),
+					thumbnailImageId: getPostThumbnailImage(post),
+					featureImageId: getPostFeatureImage(post),
 				},
 				frontmatter: {
 					title,
+					summary: getPostExcerpt(post),
 					author: getAuthorName(authors, getPostAuthor(post)),
 					date: getPostDate(post),
+					images: {},
 					categories: getCategories(post),
 					tags: getTags(post)
 				},
@@ -248,11 +251,16 @@ function getPostId(post) {
 	return post.post_id[0];
 }
 
-function getPostCoverImageId(post) {
+function getPostThumbnailImage(post) {
 	if (post.postmeta === undefined) return;
 	let postmeta = post.postmeta.find(postmeta => postmeta.meta_key[0] === '_thumbnail_id');
-	let id = postmeta ? postmeta.meta_value[0] : undefined;
-	return id;
+	return postmeta && postmeta.meta_value[0]
+}
+
+function getPostFeatureImage(post) {
+	if (post.postmeta === undefined) return;
+	let postmeta = post.postmeta.find(postmeta => postmeta.meta_key[0] === 'post_medium_thumbnail_id');
+	return postmeta && postmeta.meta_value[0]
 }
 
 function getPostSlug(post) {
@@ -261,6 +269,10 @@ function getPostSlug(post) {
 
 function getPostTitle(post) {
 	return post.title[0].trim();
+}
+
+function getPostExcerpt(post) {
+	return (post.encoded[1] || '').trim();
 }
 
 function getPostDate(post) {
@@ -307,10 +319,10 @@ function mergeImagesIntoPosts(images, posts) {
 
 	images.forEach(image => {
 		let post;
-		//get post through thumbnail ID first
-		post = posts.filter(o => o.meta.coverImageId == image.id)[0];
-		if (!post){
-			//include other images with post id as parent id as well
+		// get post through thumbnail ID first
+		post = posts.filter(o => o.meta.thumbnailImageId === image.id)[0];
+		if (!post) {
+			// include other images with post id as parent id as well
 			post = postsLookup[image.postId];
 		}
 		if (post) {
@@ -318,9 +330,13 @@ function mergeImagesIntoPosts(images, posts) {
 			post.meta.imageUrls = post.meta.imageUrls || [];
 			post.meta.imageUrls.push(image.url);
 
-			if (image.id === post.meta.coverImageId) {
-				// save cover image filename to frontmatter
-				post.frontmatter.coverImage = "images/" + getFilenameFromUrl(image.url);
+			// save cover image filename to frontmatter
+			if (image.id === post.meta.thumbnailImageId) {
+				post.frontmatter.images.thumbnail = "./images/" + getFilenameFromUrl(image.url);
+			}
+
+			if (image.id === post.meta.featureImageId) {
+				post.frontmatter.images.feature = "./images/" + getFilenameFromUrl(image.url);
 			}
 		}
 	});
