@@ -92,7 +92,7 @@ function parseFileContent (content) {
 }
 
 function processData (data) {
-  const baseUrl = data.rss.channel[0].base_site_url[0]
+  baseUrl = data.rss.channel[0].base_site_url[0]
   images = collectImages(data)
   authors = collectAuthors(data)
   posts = collectPosts(data, authors)
@@ -112,7 +112,7 @@ function collectImages (data) {
     }))
 
   // optionally add images scraped from <img> tags in post content
-  if (argv.addcontentimages) {
+  if (options.addcontentimages) {
     addContentImages(data, images)
   }
 
@@ -161,8 +161,8 @@ function collectPosts (data, authors) {
 
   return getItemsOfType(data, 'post')
     .filter(post => {
-      return argv.filter
-        ? getPostTitle(post).toLowerCase().indexOf(argv.filter.toLowerCase()) > -1
+      return options.filter
+        ? getPostTitle(post).toLowerCase().indexOf(options.filter.toLowerCase()) > -1
         : true
     })
     .map(post => {
@@ -343,7 +343,7 @@ function getPostContent (post, turndownService) {
   // without mucking up content inside of other elemnts (like <code> blocks)
   content = content.replace(/(\r?\n){2}/g, '\n<div></div>\n')
 
-  if (argv.addcontentimages) {
+  if (options.addcontentimages) {
     // writeImageFile() will save all content images to a relative /images
     // folder so update references in post content to match
     content = content.replace(/(<img[^>]*src=").*?([^\/"]+\.(?:gif|jpg|jpeg|png))("[^>]*>)/gi, '$1images/$2$3')
@@ -409,7 +409,7 @@ function writeFiles (posts) {
     createDir(postDir)
     writeMarkdownFile(post, postDir)
 
-    if (argv.saveimages && post.meta.imageUrls) {
+    if (options.saveimages && post.meta.imageUrls) {
       post.meta.imageUrls.forEach(imageUrl => {
         const imageDir = path.join(postDir, 'images')
         createDir(imageDir)
@@ -459,10 +459,10 @@ function writeImageFile (imageUrl, imageDir, delay) {
 }
 
 function getPostDir (post) {
-  let dir = argv.output
+  let dir = options.output
   let dt = luxon.DateTime.fromISO(post.frontmatter.date)
 
-  switch (argv.folders) {
+  switch (options.folders) {
     case 'year':
       dir = path.join(dir, dt.toFormat('yyyy'))
       break
@@ -479,7 +479,7 @@ function getPostDir (post) {
 
     case 'post':
       let folder = post.meta.slug
-      if (argv.prefixdate) {
+      if (options.prefixdate) {
         folder = dt.toFormat('yyyy-LL-dd') + '-' + folder
       }
       dir = path.join(dir, folder)
@@ -493,14 +493,14 @@ function getPostFilename (post) {
   const filename = post.meta.slug + '.md'
 
   // creating folders
-  if (/path|post/.test(argv.folders)) {
-    return argv.namedfiles
+  if (/path|post/.test(options.folders)) {
+    return options.namedfiles
       ? filename
       : 'index.md'
   }
 
   // creating files
-  if (argv.prefixdate) {
+  if (options.prefixdate) {
     const dt = luxon.DateTime.fromISO(post.frontmatter.date)
     return dt.toFormat('yyyy-LL-dd') + '-' + filename
   }
@@ -511,22 +511,22 @@ function getPostFilename (post) {
 // init
 // ---------------------------------------------------------------------------------------------------------------------
 
-// meta options
+// meta transformation
 const metaKeys = {
   // add transformer functions here
 }
 
-// object globals
+// globals
 let baseUrl
 let images
 let authors
 let posts
 
-// global so various functions can access arguments
-let argv
+// options
+let options
 
 function init () {
-  argv = minimist(process.argv.slice(2), {
+  options = minimist(process.argv.slice(2), {
     string: [
       'input',
       'output',
@@ -557,18 +557,18 @@ function init () {
 
   // check folder option is valid
   const folders = 'year yearmonth path post'.split(' ')
-  if (!folders.includes(argv.folders)) {
-    console.error('Invalid `folders` option:', argv.folders)
+  if (!folders.includes(options.folders)) {
+    console.error('Invalid `folders` option:', options.folders)
     console.error('Choose from:', folders.join(', '))
     return
   }
 
   // set output to input if not already set
-  if (!argv.output) {
-    argv.output = argv.input.replace(/\.xml$/, '')
+  if (!options.output) {
+    options.output = options.input.replace(/\.xml$/, '')
   }
 
-  const content = readFile(argv.input)
+  const content = readFile(options.input)
   parseFileContent(content)
 }
 
