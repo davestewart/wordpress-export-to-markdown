@@ -5,6 +5,7 @@ const path = require('path');
 const request = require('request');
 const turndown = require('turndown');
 const xml2js = require('xml2js');
+const YAML = require('yaml')
 
 // global so various functions can access arguments
 let argv;
@@ -38,6 +39,20 @@ function init() {
 
 	let content = readFile(argv.input);
 	parseFileContent(content);
+}
+
+function isObject (value) {
+	return value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isEmpty (value) {
+	if (Array.isArray(value)) {
+		return value.length === 0
+	}
+	if (isObject(value)) {
+		return Object.keys(value).length === 0
+	}
+	return !value
 }
 
 function readFile(path) {
@@ -230,17 +245,17 @@ function getPostAuthor(post) {
 function getCategories(post) {
 	let categories = [];
 	post.category.forEach(c => {
-		if (c.$.domain == "category") {
+		if (c.$.domain === "category") {
 			categories.push(c._.toLowerCase().trim());
 		}
 	})
-	return categories.join(",");
+	return categories;
 }
 
 function getTags(post) {
 	let tags = [];
 	post.category.forEach(c => {
-		if (c.$.domain == "post_tag") {
+		if (c.$.domain === "post_tag") {
 			tags.push(c._.toLowerCase().trim());
 		}
 	})
@@ -361,13 +376,18 @@ function writeFiles(posts) {
 }
 
 function writeMarkdownFile(post, postDir) {
-	const frontmatter = Object.entries(post.frontmatter)
-		.reduce((accumulator, pair) => {
-			return accumulator + pair[0] + ': "' + pair[1] + '"\n'
-		}, '');
-	const data = '---\n' + frontmatter + '---\n\n' + post.content + '\n';
-
+	const frontmatter = Object
+		.keys(post.frontmatter)
+		.reduce((output, key) => {
+			const value = post.frontmatter[key];
+			if (!isEmpty(value)) {
+				output[key] = value;
+			}
+			return output;
+		}, {})
+	const data = '---\n' + YAML.stringify(frontmatter) + '---\n\n' + post.content + '\n';
 	const postPath = path.join(postDir, getPostFilename(post));
+
 	fs.writeFile(postPath, data, (err) => {
 		if (err) {
 			console.log('Unable to write file.')
