@@ -444,10 +444,10 @@ function writeImageFile (imageUrl, imageDir, delay) {
   // stagger image requests so we don't piss off hosts
   setTimeout(() => {
     request
-      .get(encodeURI(imageUrl))
+      .get(imageUrl)
       .on('response', response => {
         if (response.statusCode !== 200) {
-          console.log('Response status code ' + response.statusCode + ' received for ' + imageUrl + '.')
+          console.log('Response status code ' + response.statusCode + ' received for ' + imageUrl)
         }
       })
       .on('error', err => {
