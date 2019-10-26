@@ -14,30 +14,41 @@ function init() {
 	argv = minimist(process.argv.slice(2), {
 		string: [
 			'input',
-			'output'
+			'output',
+			'folders'
 		],
 		boolean: [
-			'yearmonthfolders',
-			'yearfolders',
-			'postfolders',
 			'prefixdate',
+			'namedfiles',
 			'saveimages',
 			'addcontentimages'
 		],
 		default: {
+			// I/O
 			input: 'export.xml',
 			output: 'output',
 			filter: undefined,
-			yearmonthfolders: false,
-			yearfolders: false,
-			postfolders: true,
+
+			// folder structure
+			folders: 'post',
 			prefixdate: false,
+			namedfiles: true,
+
+			// content
 			saveimages: true,
-			addcontentimages: false
+			addcontentimages: true,
 		}
 	});
 
-	let content = readFile(argv.input);
+	// check folder output is valid
+	const folders = 'year yearmonth path post'.split(' ')
+	if (!folders.includes(argv.folders)) {
+		console.error('Invalid `folders` option:', argv.folders);
+		console.error('Choose from:', folders.join(', '));
+		return
+	}
+
+	const content = readFile(argv.input);
 	parseFileContent(content);
 }
 
@@ -159,10 +170,13 @@ function collectPosts(data, authors) {
 				meta: {
 					id: getPostId(post),
 					slug: getPostSlug(post),
+					path: getPostPath(post),
+					status: getPostStatus(post),
 					thumbnailImageId: getPostThumbnailImage(post),
 					featureImageId: getPostFeatureImage(post),
 				},
 				frontmatter: {
+					slug: getPostSlug(post),
 					title,
 					summary: getPostExcerpt(post),
 					author: getAuthorName(authors, getPostAuthor(post)),
@@ -236,7 +250,7 @@ function getItemsOfType(data, type) {
 }
 
 function getAuthorName(authors, id) {
-	return authors.find(item => item.id == id).name;
+	return authors.find(item => item.id === id).name;
 }
 
 function getPostAuthor(post) {
@@ -279,7 +293,15 @@ function getPostFeatureImage(post) {
 }
 
 function getPostSlug(post) {
-	return post.post_name[0];
+	return post.post_name[0] || post.post_id[0];
+}
+
+function getPostPath(post) {
+	return post.link[0].replace(/http:\/\/[^/]+/, '').replace(/^\/|\/$/g, '');
+}
+
+function getPostStatus(post) {
+	return post.status[0];
 }
 
 function getPostTitle(post) {
@@ -437,35 +459,53 @@ function getPostDir(post) {
 	let dir = argv.output;
 	let dt = luxon.DateTime.fromISO(post.frontmatter.date);
 
-	if (argv.yearmonthfolders) {
-		dir = path.join(dir, dt.toFormat('yyyy'), dt.toFormat('LL'));
-	} else if (argv.yearfolders) {
-		dir = path.join(dir, dt.toFormat('yyyy'));
+	// drafts
+	if (argv.pathfolders && post.meta.status === 'draft') {
+		dir = path.join('drafts', dir);
 	}
 
-	if (argv.postfolders) {
-		let folder = post.meta.slug;
-		if (argv.prefixdate) {
-			folder = dt.toFormat('yyyy-LL-dd') + '-' + folder;
-		}
-		dir = path.join(dir, folder);
+	// folder output style
+	switch (argv.folders) {
+		case 'year':
+			dir = path.join(dir, dt.toFormat('yyyy'));
+			break;
+
+		case 'yearmonth':
+			dir = path.join(dir, dt.toFormat('yyyy'), dt.toFormat('LL'));
+			break;
+
+		case 'path':
+			dir = path.join(dir, post.meta.path);
+			break;
+
+		case 'post':
+			let folder = post.meta.slug;
+			if (argv.prefixdate) {
+				folder = dt.toFormat('yyyy-LL-dd') + '-' + folder;
+			}
+			dir = path.join(dir, folder);
+			break;
 	}
 
 	return dir;
 }
 
 function getPostFilename(post) {
-	if (argv.postfolders) {
-		// the containing folder name will be unique, just use index.md here
-		return 'index.md';
-	} else {
-		let filename = post.meta.slug + '.md';
-		if (argv.prefixdate) {
-			let dt = luxon.DateTime.fromISO(post.frontmatter.date);
-			filename = dt.toFormat('yyyy-LL-dd') + '-' + filename;
-		}
-		return filename;
+	const filename = post.meta.slug + '.md';
+
+	// creating folders
+	if (/path|post/.test(argv.folders)) {
+		return argv.namedfiles
+			? filename
+			: 'index.md';
 	}
+
+	// creating files
+	if (argv.prefixdate) {
+		const dt = luxon.DateTime.fromISO(post.frontmatter.date);
+		return dt.toFormat('yyyy-LL-dd') + '-' + filename;
+	}
+	return filename;
 }
 
 // it's go time!
