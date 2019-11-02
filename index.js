@@ -3,9 +3,10 @@ const luxon = require('luxon')
 const minimist = require('minimist')
 const path = require('path')
 const request = require('request')
-const turndown = require('turndown')
+const Turndown = require('turndown')
 const xml2js = require('xml2js')
 const YAML = require('yaml')
+const Entities = require('html-entities').AllHtmlEntities
 
 // ---------------------------------------------------------------------------------------------------------------------
 // utils
@@ -167,22 +168,26 @@ function collectPosts (data, authors) {
     })
     .map(post => {
       const title = getPostTitle(post)
+      const slug = getPostSlug(post)
+      const path = getPostPath(post)
+      const folder = path.replace(/\/[^/]+$/g, '')
       console.log('Processing: ' + title)
       return {
         // meta data isn't written to file, but is used to help with other things
         meta: {
           id: getPostId(post),
-          slug: getPostSlug(post),
-          path: getPostPath(post),
+          slug,
+          path,
           status: getPostStatus(post),
           thumbnailImageId: getPostThumbnailImage(post),
           featureImageId: getPostFeatureImage(post)
         },
         frontmatter: {
-          slug: getPostSlug(post),
+          slug,
+          folder: !folder.includes('?') ? folder : null,
           title,
-          summary: getPostExcerpt(post),
-          author: getAuthorName(authors, getPostAuthor(post)),
+          description: getPostExcerpt(post),
+          // author: getAuthorName(authors, getPostAuthor(post)),
           date: getPostDate(post),
           images: {},
           categories: getCategories(post),
@@ -197,7 +202,7 @@ function collectPosts (data, authors) {
 }
 
 function initTurndownService () {
-  let turndownService = new turndown({
+  let turndownService = new Turndown({
     headingStyle: 'atx',
     bulletListMarker: '-',
     codeBlockStyle: 'fenced'
@@ -311,14 +316,20 @@ function getTags (post) {
 
 function getMeta (post) {
   return (post.postmeta || []).reduce((output, item) => {
-    const key = item.meta_key[0].replace(/^_/, '')
-    if (key in metaKeys) {
+    const keyName = item.meta_key[0].replace(/^_/, '')
+    if (keyName in userMeta) {
       const value = item.meta_value[0]
-      if (value) {
-        const transform = metaKeys[key]
-        output[key] = typeof transform === 'function'
-          ? transform(value)
-          : value
+      if (!isEmpty(value)) {
+        const data = userMeta[keyName]
+        if (isObject(data)) {
+          const { rename, transform } = data
+          output[rename || keyName] = typeof transform === 'function'
+            ? transform(value)
+            : value
+        }
+        else {
+          output[data] = value
+        }
       }
     }
     return output
@@ -579,8 +590,38 @@ function getPostFilename (post) {
 // ---------------------------------------------------------------------------------------------------------------------
 
 // meta transformation
-const metaKeys = {
-  // add transformer functions here
+const entities = new Entities();
+
+const userMeta = {
+  zilla_image_ids: {
+    rename: 'gallery',
+    transform: ids => ids.split(',')
+      .map(id => {
+        const data = images.find(data => data.id === id)
+        const url = data && getFilenameFromUrl(data.url)
+        return url ? './images/' + url : ''
+      })
+      .filter(url => url)
+  },
+  zilla_quote_quote: 'quote',
+  zilla_video_embed_code: {
+    rename: 'video_embed',
+    transform: value => entities.decode(value),
+  },
+  zilla_video_height: {
+    rename: 'video_height',
+    transform: value => parseInt(value),
+  },
+  zilla_video_width: {
+    rename: 'video_width',
+    transform: value => parseInt(value),
+  },
+  zilla_video_poster_url: 'video_image',
+  zilla_video_m4v: 'video_m4v',
+  zilla_video_ogv: 'video_ogv',
+  og_type: 'og_type',
+  og_title: 'og_title',
+  og_description: 'og_description',
 }
 
 // globals
