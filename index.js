@@ -597,7 +597,8 @@ function init () {
     string: [
       'input',
       'output',
-      'folders'
+      'filter',
+      'folders',
     ],
     boolean: [
       'prefixdate',
@@ -608,7 +609,7 @@ function init () {
     ],
     default: {
       // I/O
-      input: 'export.xml',
+      input: undefined,
       output: undefined,
       filter: undefined,
 
@@ -632,13 +633,43 @@ function init () {
     return
   }
 
-  // set output to input if not already set
-  if (!options.output) {
-    options.output = options.input.replace(/\.xml$/, '')
+  // determine input file
+  let input = options.input
+  if (!input) {
+    input = 'export.xml'
   }
 
-  const content = readFile(options.input)
-  parseFileContent(content)
+  // if input is folder
+  else {
+    const exists = fs.existsSync(input)
+    const stat = exists && fs.statSync(input)
+    if (stat && stat.isDirectory()) {
+      input = path.join(input, 'export.xml')
+      options.output = path.join(options.input, 'export')
+    }
+  }
+
+  // check to see that import exists
+  if (!fs.existsSync(input)) {
+    console.error('The input file / folder does not exist:', input)
+  }
+
+  // set output to input if not already set
+  if (!options.output) {
+    options.output = input.replace(/\.xml$/, '')
+  }
+
+  if (input) {
+    // debug
+    console.log('Input:', input)
+    console.log('Output:', options.output + '\n')
+
+    // export if input exists
+    const content = readFile(input)
+    if (content) {
+      parseFileContent(content)
+    }
+  }
 }
 
 init()
