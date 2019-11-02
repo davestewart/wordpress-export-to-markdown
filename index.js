@@ -188,8 +188,10 @@ function collectPosts (data, authors) {
           categories: getCategories(post),
           tags: getTags(post),
           meta: getMeta(post),
+          numComments: post.comment.length
         },
-        content: getPostContent(post, turndownService)
+        content: getPostContent(post, turndownService),
+        comments: getPostComments(post)
       }
     })
 }
@@ -366,6 +368,56 @@ function getPostContent (post, turndownService) {
   return content
 }
 
+function getPostComments (post) {
+    const input = post.comment
+    if (input) {
+      // variables
+      const comments = {}
+      const output = []
+      const nest = options.nestcomments
+
+      // process
+      input.forEach(data => {
+        // data
+        const comment = {
+          id: parseInt(data.comment_id[0], 10),
+          parentId: parseInt(data.comment_parent[0], 10),
+          date: data.comment_date[0],
+          content: data.comment_content[0],
+          author: {
+            name: data.comment_author[0],
+            email: data.comment_author_email[0],
+            url: data.comment_author_url[0],
+          },
+        }
+
+        // refs
+        comments[comment.id] = comment
+        if (!comment.parentId) {
+          delete comment.parentId
+        }
+
+        // nesting
+        if (comment.parentId && nest) {
+          const parent = comments[comment.parentId]
+          delete comment.parentId
+          if (nest && parent) {
+            if (!parent.replies) {
+              parent.replies = []
+            }
+            parent.replies.push(comment)
+          }
+        }
+        else {
+          output.push(comment)
+        }
+      })
+
+      // return
+      return output
+    }
+  }
+
 function mergeImagesIntoPosts (images, posts) {
   // create lookup table for quicker traversal
   let postsLookup = posts.reduce((lookup, post) => {
@@ -408,6 +460,7 @@ function writeFiles (posts) {
     const postDir = getPostDir(post)
     createDir(postDir)
     writeMarkdownFile(post, postDir)
+    writeCommentsFile(post, postDir)
 
     if (options.saveimages && post.meta.imageUrls) {
       post.meta.imageUrls.forEach(imageUrl => {
@@ -428,6 +481,20 @@ function writeMarkdownFile (post, postDir) {
   fs.writeFile(postPath, data, (err) => {
     if (err) {
       console.log('Unable to write file.')
+      console.log(err)
+    } else {
+      console.log('Wrote: ' + postPath)
+    }
+  })
+}
+
+function writeCommentsFile (post, postDir) {
+  const data = JSON.stringify(post.comments, null, '  ')
+  const postPath = path.join(postDir, 'comments.json')
+
+  fs.writeFile(postPath, data, (err) => {
+    if (err) {
+      console.log('Unable to write file')
       console.log(err)
     } else {
       console.log('Wrote: ' + postPath)
@@ -536,7 +603,8 @@ function init () {
       'prefixdate',
       'namedfiles',
       'saveimages',
-      'addcontentimages'
+      'addcontentimages',
+      'nestcomments',
     ],
     default: {
       // I/O
@@ -551,7 +619,8 @@ function init () {
 
       // content
       saveimages: true,
-      addcontentimages: true
+      addcontentimages: true,
+      nestcomments: true,
     }
   })
 
